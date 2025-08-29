@@ -1,3 +1,11 @@
+/*
+ * @Author: wayne 1448119477@qq.com
+ * @Date: 2025-08-29 15:43:34
+ * @LastEditors: wayne 1448119477@qq.com
+ * @LastEditTime: 2025-08-29 15:43:35
+ * @FilePath: /sim_v3/src/buffer/buffer.cpp
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #include "buffer/buffer.h"
 #include "common/packet.h"
 
@@ -33,7 +41,7 @@ namespace GNN
         return true;
     }
 
-    // MemSidePort 实现
+    // MemSidePort 实现。
     bool Buffer::MemSidePort::recvTimingResp(PacketPtr pkt)
     {
         return buffer->recvTimingResp(pkt);
