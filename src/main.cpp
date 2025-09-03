@@ -43,64 +43,64 @@ void forEachObject(void (SimObject::*mem_func)())
 
 int main()
 {
-    const int num_banks = 8;
-    const int buf_size = 10;
-    const int num_upstreams = 4;
-    std::string config_file = "./DRAMsim3-master/configs/HBM2_4Gb_x128.ini";
-    std::string output_dir = ".";
-    std::string trace_out_file = "./output/trace_out_file.txt";
+    // 基本配置（可按需调整）
+    const int num_banks = 8;          // Bank 数
+    const int dram_buf_size = 10;     // DramArb 内部缓冲深度
+    const int num_upstreams = 4;      // 上游 UpBuffer 数量
+
+    // DRAMsim3 配置
+    const std::string config_file = "./DRAMsim3-master/configs/HBM2_4Gb_x128.ini";
+    const std::string output_dir = ".";
+    const std::string trace_out_file = "./output/trace_out_file.txt";
+
+    // 全局事件队列与调试开关
     gSim = new EventQueue("main_queue");
-    dramsim3_wrapper *dramsim3_wrapper_ = new dramsim3_wrapper(config_file, output_dir, trace_out_file);
-    miniDebugLevel = DBG_INFO;                                                                // 只显示 info 及以上
-    miniDebugModules = {"DRAM", "BUFFER", "DRAM_ARB", "DRAM_SIM3", "DRAM_WRAPPER", "EVENTQ"}; // 只显示这两个模块的日志
+    miniDebugLevel = DBG_INFO; // 只显示 info 及以上
+    miniDebugModules = {"DRAM", "BUFFER", "DRAM_ARB", "DRAM_SIM3", "DRAM_WRAPPER", "EVENTQ"};
 
-    // 1. 创建 DramArb
-    DramArb dram_arb("dram_arb", buf_size, num_upstreams);
-    UpBuffer up_buffer_0("up_buffer_0", dramsim3_wrapper_, 0);
-    UpBuffer up_buffer_1("up_buffer_1", dramsim3_wrapper_, 16384);
-    UpBuffer up_buffer_2("up_buffer_2", dramsim3_wrapper_, 32768);
-    UpBuffer up_buffer_3("up_buffer_3", dramsim3_wrapper_, 49152);
-    std::vector<DRAMsim3 *> dramsim3_vec;
-    for (int i = 0; i < num_banks; ++i)
-    {
-        dramsim3_vec.push_back(new DRAMsim3("dramsim3_" + std::to_string(i), i, dramsim3_wrapper_));
+    // 资源构建
+    auto *wrapper = new dramsim3_wrapper(config_file, output_dir, trace_out_file);
+    DramArb dramArb("dram_arb", dram_buf_size, num_upstreams);
+
+    // 上游缓冲（人为分配不同起始地址，便于观察）
+    UpBuffer up0("up_buffer_0", wrapper, 0);
+    UpBuffer up1("up_buffer_1", wrapper, 16 * 1024);
+    UpBuffer up2("up_buffer_2", wrapper, 32 * 1024);
+    UpBuffer up3("up_buffer_3", wrapper, 48 * 1024);
+
+    // 下游每个 bank 一个 DRAMsim3 实例
+    std::vector<DRAMsim3 *> drams;
+    drams.reserve(num_banks);
+    for (int bank = 0; bank < num_banks; ++bank) {
+        drams.push_back(new DRAMsim3("dramsim3_" + std::to_string(bank), bank, wrapper));
     }
 
-    // 辅助函数：双向绑定两个端口
-    auto bindPorts = [](Port& port1, Port& port2) {
-        port1.bind(port2);
-        port2.bind(port1);
+    // 小工具：双向绑定
+    auto bindTwoWay = [](Port &a, Port &b) {
+        a.bind(b);
+        b.bind(a);
     };
-    // 绑定上游buffer到dram_arb的响应端口
-    for (int i = 0; i < num_banks; ++i) {
-        bindPorts(up_buffer_0.getPort("buf_side" + std::to_string(i)), 
-                  dram_arb.getPort("response" + std::to_string(i) + "_0"));
-        bindPorts(up_buffer_1.getPort("buf_side" + std::to_string(i)), 
-                  dram_arb.getPort("response" + std::to_string(i) + "_1"));
-        bindPorts(up_buffer_2.getPort("buf_side" + std::to_string(i)), 
-                  dram_arb.getPort("response" + std::to_string(i) + "_2"));
-        bindPorts(up_buffer_3.getPort("buf_side" + std::to_string(i)), 
-                  dram_arb.getPort("response" + std::to_string(i) + "_3"));
-        // 绑定dram_arb的请求端口到DRAM
-        bindPorts(dram_arb.getPort("request" + std::to_string(i)), 
-                  dramsim3_vec[i]->getPort("mem_side"));
+
+    // 端口绑定：每个 bank 绑定四个上游端口 + 一个下游 DRAM 端口
+    for (int bank = 0; bank < num_banks; ++bank) {
+        const std::string b = std::to_string(bank);
+        bindTwoWay(up0.getPort("buf_side" + b), dramArb.getPort("response" + b + "_0"));
+        bindTwoWay(up1.getPort("buf_side" + b), dramArb.getPort("response" + b + "_1"));
+        bindTwoWay(up2.getPort("buf_side" + b), dramArb.getPort("response" + b + "_2"));
+        bindTwoWay(up3.getPort("buf_side" + b), dramArb.getPort("response" + b + "_3"));
+        bindTwoWay(dramArb.getPort("request" + b), drams[bank]->getPort("mem_side"));
     }
+
+    // 调用所有对象的 init 钩子，触发各自初始化逻辑
     forEachObject(&SimObject::init);
-    // 端口绑定
-    // for (int i = 0; i < 8; ++i)
-    // {
-    //     up_buffers[i]->getPort().bind(dram_arb.getPort("response" + std::to_string(i)));
-    // }
-    // 发送请求示例
 
-    int addr = 0;
+    // 主循环：按事件推进
     std::cout << "---- Simulation Start ----" << std::endl;
-    while (!gSim->empty() && gSim->getCurTick() < 1000)
-    {
-
+    while (!gSim->empty() && gSim->getCurTick() < 1000) {
         gSim->serviceOne();
     }
     std::cout << "---- Simulation End ----" << std::endl;
+
     delete gSim;
     return 0;
 }
