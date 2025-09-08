@@ -45,8 +45,8 @@ int main()
 {
     // 基本配置（可按需调整）
     const int num_banks = 8;          // Bank 数
-    const int dram_buf_size = 10;     // DramArb 内部缓冲深度
-    const int num_upstreams = 4;      // 上游 UpBuffer 数量
+    const int dram_buf_size = 100;     // DramArb 内部缓冲深度
+    const int num_upstreams = 3;      // 上游 UpBuffer 数量
 
     // DRAMsim3 配置
     const std::string config_file = "./DRAMsim3-master/configs/HBM2_4Gb_x128.ini";
@@ -55,10 +55,10 @@ int main()
 
     // 全局事件队列与调试开关
     gSim = new EventQueue("main_queue");
-    miniDebugLevel = DBG_INFO; // 只显示 info 及以上
+    miniDebugLevel = GNN::DBG_INFO; // 只显示 info 及以上
     miniDebugModules = {"DRAM", "BUFFER", "DRAM_ARB", "DRAM_SIM3", "DRAM_WRAPPER", "EVENTQ"};
 
-    // 资源构建
+
     auto *wrapper = new dramsim3_wrapper(config_file, output_dir, trace_out_file);
     DramArb dramArb("dram_arb", dram_buf_size, num_upstreams);
 
@@ -66,7 +66,7 @@ int main()
     UpBuffer up0("up_buffer_0", wrapper, 0);
     UpBuffer up1("up_buffer_1", wrapper, 16 * 1024);
     UpBuffer up2("up_buffer_2", wrapper, 32 * 1024);
-    UpBuffer up3("up_buffer_3", wrapper, 48 * 1024);
+    // UpBuffer up3("up_buffer_3", wrapper, 48 * 1024);
 
     // 下游每个 bank 一个 DRAMsim3 实例
     std::vector<DRAMsim3 *> drams;
@@ -86,8 +86,8 @@ int main()
         const std::string b = std::to_string(bank);
         bindTwoWay(up0.getPort("buf_side" + b), dramArb.getPort("response" + b + "_0"));
         bindTwoWay(up1.getPort("buf_side" + b), dramArb.getPort("response" + b + "_1"));
-        bindTwoWay(up2.getPort("buf_side" + b), dramArb.getPort("response" + b + "_2"));
-        bindTwoWay(up3.getPort("buf_side" + b), dramArb.getPort("response" + b + "_3"));
+         bindTwoWay(up2.getPort("buf_side" + b), dramArb.getPort("response" + b + "_2"));
+        // bindTwoWay(up3.getPort("buf_side" + b), dramArb.getPort("response" + b + "_3"));
         bindTwoWay(dramArb.getPort("request" + b), drams[bank]->getPort("mem_side"));
     }
 

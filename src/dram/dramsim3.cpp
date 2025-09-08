@@ -10,9 +10,9 @@ DRAMsim3::DRAMsim3(const std::string &name_, int channel,
       sendResponseEvent([this] { sendResponse(); }, name()),
       tickEvent([this] { tick(); }, name()) {
   wrapper->set_read_callback(
-      channel_id, [this](addr_t addr,data_t data=0) { this->readComplete(addr); });
+      channel_id, [this](PacketPtr pkt) { this->readComplete(pkt); });
   wrapper->set_write_callback(
-      channel_id, [this](addr_t addr,data_t data=0) { this->writeComplete(addr); });
+      channel_id, [this](PacketPtr pkt) { this->writeComplete(pkt); });
   // Register a callback to compensate for the destructor not
   // being called. The callback prints the DRAMsim3 stats.
   // registerExitCallback([this]() { wrapper->printStats(); });
@@ -37,6 +37,7 @@ void DRAMsim3::resetStats() {
 void DRAMsim3::sendResponse() {
   assert(!retryResp);
   assert(!responseQueue.empty());
+
   bool success = port.sendTimingResp(responseQueue.front());
 
   if (success) {
@@ -62,7 +63,7 @@ void DRAMsim3::tick() {
 }
 
 bool DRAMsim3::recvTimingReq(PacketPtr pkt) {
-   D_DEBUG("DRAM_SIM3", "recvTimingReq:");
+  D_DEBUG("DRAM_SIM3", "recvTimingReq:");
   // keep track of the transaction
   bool can_accept = wrapper->can_accept(pkt->getAddr(), pkt->isWrite());
   if (!pkt->isWrite()) {
@@ -72,6 +73,7 @@ bool DRAMsim3::recvTimingReq(PacketPtr pkt) {
     }
   } else {
     if (can_accept) {
+      sim_storage.writePacket(pkt);
       outstandingWrites[pkt->getAddr()].push(pkt);
       ++nbrOutstandingWrites;
       pendingDelete.reset(pkt);
@@ -82,7 +84,6 @@ bool DRAMsim3::recvTimingReq(PacketPtr pkt) {
     wrapper->send_request(pkt->getAddr(), pkt->isWrite());
     return true;
   } else {
-    schedule(tickEvent, curTick() + 1);
     retryReq = true;
     return false;
   }
@@ -108,15 +109,15 @@ void DRAMsim3::accessAndRespond(PacketPtr pkt) {
   }
 }
 
-void DRAMsim3::readComplete(addr_t addr,data_t data) {
-  D_INFO("DRAM_SIM3", "[Recv DRAMSIM3],channel_id: %d,readComplete addr: %d",
-          channel_id, addr);
+void DRAMsim3::readComplete(PacketPtr pkt) {
+  D_INFO("DRAM_SIM3", "[Recv DRAMSIM3],channel_id: %d,readComplete addr: %lld",
+         channel_id, pkt->getAddr());
   // get the outstanding reads for the address in question
-  auto p = outstandingReads.find(addr);
+  auto p = outstandingReads.find(pkt->getAddr());
   assert(p != outstandingReads.end());
   // first in first out, which is not necessarily true, but it is
   // the best we can do at this point
-  PacketPtr pkt = p->second.front();
+
   p->second.pop();
   if (p->second.empty())
     outstandingReads.erase(p);
@@ -125,14 +126,17 @@ void DRAMsim3::readComplete(addr_t addr,data_t data) {
   // response to the response queue straight away
   assert(nbrOutstandingReads != 0);
   --nbrOutstandingReads;
-
+  if (retryReq)
+    schedule(tickEvent, curTick() + 1);
+  sim_storage.readPacket(pkt);
   // perform the actual memory access
   accessAndRespond(pkt);
 }
 
-void DRAMsim3::writeComplete(addr_t addr,data_t data) {
-
-  auto p = outstandingWrites.find(addr);
+void DRAMsim3::writeComplete(PacketPtr pkt) {
+  D_INFO("DRAM_SIM3", "[Recv DRAMSIM3],channel_id: %d,writeComplete addr: %lld",
+         channel_id, pkt->getAddr());
+  auto p = outstandingWrites.find(pkt->getAddr());
   assert(p != outstandingWrites.end());
 
   p->second.pop();
@@ -140,6 +144,12 @@ void DRAMsim3::writeComplete(addr_t addr,data_t data) {
     outstandingWrites.erase(p);
   assert(nbrOutstandingWrites != 0);
   --nbrOutstandingWrites;
+
+  if (retryReq)
+    schedule(tickEvent, curTick() + 1);
+
+  // perform the actual memory access
+  // accessAndRespond(pkt);
 }
 
 DRAMsim3::MemoryPort::MemoryPort(const std::string &_name, DRAMsim3 &_memory)

@@ -12,6 +12,8 @@
 #include "common/debug.h"
 #include "event/eventq.h"
 #include "common/common.h"
+#include "dram/sim_dram_storage.h"
+#include "common/packet.h"
 #define QUEUE_SIZE 64
 namespace GNN
 {
@@ -36,13 +38,20 @@ namespace GNN
         std::unordered_map<uint64_t, Buffer *> waitingAddrToBuf;
 
         // 多通道回调
-        std::vector<std::function<void(addr_t,data_t)>> read_callbacks;
-        std::vector<std::function<void(addr_t,data_t)>> write_callbacks;
+        std::vector<std::function<void(PacketPtr)>> read_callbacks;
+        std::vector<std::function<void(PacketPtr)>> write_callbacks;
+        
+        // // 模拟DRAM存储：独立类，提供4GB、burst=64支持
+        // SimDramStorage sim_storage;
 
     public:
         int cycle_num;
         void init() override;
         dramsim3::MemorySystem *memory_system_1;
+
+        // // PacketPtr 直接接口
+        // bool writePacket(PacketPtr pkt) { return sim_storage.writePacket(pkt); }
+        // bool readPacket(PacketPtr pkt) { return sim_storage.readPacket(pkt); }
 
         dramsim3_wrapper(const std::string &config_file, const std::string &output_dir, const std::string &trace_out_file) : SimObject("dramsim3_wrapper"), tickEvent([this]
                                                                                                                                                                       { tick(); }, name())
@@ -66,43 +75,41 @@ namespace GNN
         }
         void global_read_callback(uint64_t addr)
         {
-            data_t data = 0;
-            // std::cout << "[Wrapper]    回调函数被触发！::" << addr<<std::endl;
+            // 创建读包，wrapper 负责释放
+            PacketPtr pkt = PacketManager::create_read_packet(addr, 64);
+           
             int ch = this->get_channel(addr);
-            if (read_callbacks[ch])
-            {
-                //    std::cout << "[Wrapper]    回调函数被触发！ch:" << ch<<std::endl;
-                read_callbacks[ch](addr,data);
+            if (read_callbacks[ch]) {
+                read_callbacks[ch](pkt);
             }
+            // 所有权转移到接收回调（DRAMsim3::readComplete），由其在响应发送后释放
         }
-
         void global_write_callback(uint64_t addr)
         {
-           data_t data = 0;
+            // 创建写包，示例中填充64个word，wrapper 负责释放
+            std::vector<uint32_t> dummy(64, 0);
+            PacketPtr pkt = PacketManager::create_write_packet(addr, dummy);
+          
             int ch = this->get_channel(addr);
-            if (write_callbacks[ch])
-            {
-                write_callbacks[ch](addr,data);
+            if (write_callbacks[ch]) {
+                write_callbacks[ch](pkt);
             }
+            // 所有权转移到接收回调（DRAMsim3::writeComplete），由其在完成处理后释放
         }
         ~dramsim3_wrapper()
         {
         }
 
         // 注册回调
-        void set_read_callback(int channel, std::function<void(addr_t,data_t)> cb)
+        void set_read_callback(int channel, std::function<void(PacketPtr)> cb)
         {
             if (channel >= 0 && channel < CHANNEL_NUM)
                 read_callbacks[channel] = cb;
         }
-        void set_write_callback(int channel, std::function<void(addr_t,data_t)> cb)
+        void set_write_callback(int channel, std::function<void(PacketPtr)> cb)
         {
             if (channel >= 0 && channel < CHANNEL_NUM)
                 write_callbacks[channel] = cb;
-        }
-
-        void WriteCallBack(uint64_t addr)
-        {
         }
 
         void request_read(uint64_t addr)

@@ -6,47 +6,51 @@
 #include <unordered_map>
 #include <vector>
 
-#include "dram/dramsim3_wrapper.h"
-#include "common/port.h"
-#include "probe/named.h"
-#include "probe/probe.h"
+#include "common/debug.h"
 #include "common/object.h"
 #include "common/packet.h"
+#include "common/port.h"
+#include "dram/dramsim3_wrapper.h"
 #include "event/eventq.h"
-#include "common/debug.h"
+#include "probe/named.h"
+#include "probe/probe.h"
+
 namespace GNN
 {
-// DRAMsim3 内存控制器类
-class DRAMsim3:  public SimObject{
+  // DRAMsim3 内存控制器类
+  class DRAMsim3 : public SimObject
+  {
   public:
-  void init() override;
-        Port &getPort(const std::string &if_name, int idx=-1) override
-        {
-            if (if_name == "mem_side")
-                return port;
-            throw std::runtime_error("No such port");
-        }
+    void init() override;
+    Port &getPort(const std::string &if_name, int idx = -1) override
+    {
+      if (if_name == "mem_side")
+        return port;
+      throw std::runtime_error("No such port");
+    }
+    // 模拟DRAM存储：独立类，提供4GB、burst=64支持
+
   private:
-  int channel_id;
+    // 模拟DRAM存储：独立类，提供4GB、burst=64支持
+    SimDramStorage sim_storage;
+    int channel_id;
     // 内存端口，负责流控，避免端口自身隐式创建无限存储
     class MemoryPort : public ResponsePort
     {
-      private:
-        DRAMsim3& mem;
-      public:
-        MemoryPort(const std::string& _namer,DRAMsim3& _memory);
-      protected:
-        void recvFunctional(PacketPtr pkt);
-        bool recvTimingReq(PacketPtr pkt);
-        void recvRespRetry() override;
+    private:
+      DRAMsim3 &mem;
+
+    public:
+      MemoryPort(const std::string &_namer, DRAMsim3 &_memory);
+
+    protected:
+      void recvFunctional(PacketPtr pkt);
+      bool recvTimingReq(PacketPtr pkt);
+      void recvRespRetry() override;
     };
 
-    // 回调函数
-    std::function<void(uint64_t)> read_cb;
-    std::function<void(uint64_t)> write_cb;
-
     // 实际的 DRAMsim3 封装
-    dramsim3_wrapper* wrapper;
+    dramsim3_wrapper *wrapper;
 
     // 端口是否在等待重试
     bool retryReq;
@@ -55,8 +59,8 @@ class DRAMsim3:  public SimObject{
     // 记录 wrapper 启动时刻
     cycle_t startTick;
     // 记录每个地址未完成的读写事务队列
-    std::unordered_map<addr_t, std::queue<PacketPtr> > outstandingReads;
-    std::unordered_map<addr_t, std::queue<PacketPtr> > outstandingWrites;
+    std::unordered_map<addr_t, std::queue<PacketPtr>> outstandingReads;
+    std::unordered_map<addr_t, std::queue<PacketPtr>> outstandingWrites;
     // 统计未完成的事务数，用于流控
     unsigned int nbrOutstandingReads;
     unsigned int nbrOutstandingWrites;
@@ -77,21 +81,21 @@ class DRAMsim3:  public SimObject{
     std::unique_ptr<DataPacket> pendingDelete;
 
   public:
-    MemoryPort port; //对外绑定接口
+    MemoryPort port; // 对外绑定接口
 
-    DRAMsim3(const std::string &name_, int channel, dramsim3_wrapper* wrapper);
+    DRAMsim3(const std::string &name_, int channel, dramsim3_wrapper *wrapper);
     // 读完成回调
-    void readComplete( addr_t addr,data_t data=0);
+    void readComplete(PacketPtr pkt);
     // 写完成回调
-    void writeComplete( addr_t addr,data_t data=0);
+    void writeComplete(PacketPtr pkt);
 
-    void startup() ;
-    void resetStats() ;
+    void startup();
+    void resetStats();
 
   protected:
     void recvFunctional(PacketPtr pkt);
     bool recvTimingReq(PacketPtr pkt);
-    void recvRespRetry() ;
-};
-}
+    void recvRespRetry();
+  };
+} // namespace GNN
 #endif // __MEM_DRAMSIM3_HH__

@@ -104,7 +104,7 @@ public:
   void name(const std::string &st) { objName = st; }
   void schedule(Event *event, Tick when) {
     if (event->scheduled())
-   std::cout<<"schedule event: " << event->name() << " " << event->scheduled() << std::endl;
+  //  std::cout<<"schedule event: " << event->name() << " " << event->scheduled() << std::endl;
     assert(!event->scheduled());
     assert(when >= getCurTick());
     event->setWhen(when);

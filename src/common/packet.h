@@ -29,7 +29,7 @@ public:
     size_t getSize() const { return size; }
     
     // 获取数据
-    const std::vector<uint32_t>& get_data() const { return data; }
+    const std::vector<uint32_t>& getData() const { return data; }
     
     // 是否为读操作
     bool isRead() const { return !is_write; }
