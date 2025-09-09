@@ -43,14 +43,14 @@ namespace GNN
   {
     // 每个端口先发一个包：进入对应端口的 req FIFO
 
-    int is_write = 0;
+    int is_write = 1;
 
     if (is_write)
-      for (int i = 0; i < 1; ++i)
+      for (int i = 0; i < 0; ++i)
       {
         if (i == 0)
         {
-          for (size_t j = 0; j < 2; j++)
+          for (size_t j = 0; j < 0; j++)
           {
             std::vector<uint32_t> temp_data;
             temp_data.reserve(16);

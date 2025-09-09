@@ -76,7 +76,7 @@ namespace GNN
         void global_read_callback(uint64_t addr)
         {
             // 创建读包，wrapper 负责释放
-            PacketPtr pkt = PacketManager::create_read_packet(addr, 64);
+            PacketPtr pkt = PacketManager::create_read_packet(addr,16);
            
             int ch = this->get_channel(addr);
             if (read_callbacks[ch]) {
@@ -86,14 +86,14 @@ namespace GNN
         }
         void global_write_callback(uint64_t addr)
         {
-            // 创建写包，示例中填充64个word，wrapper 负责释放
-            std::vector<uint32_t> dummy(64, 0);
-            PacketPtr pkt = PacketManager::create_write_packet(addr, dummy);
+            // 创建写包，示例中填充16个word，wrapper 负责释放
+            // std::vector<uint32_t> dummy(64, 0);
+            // PacketPtr pkt = PacketManager::create_write_packet(addr, dummy);
           
-            int ch = this->get_channel(addr);
-            if (write_callbacks[ch]) {
-                write_callbacks[ch](pkt);
-            }
+            // int ch = this->get_channel(addr);
+            // if (write_callbacks[ch]) {
+            //     write_callbacks[ch](pkt);
+            // }
             // 所有权转移到接收回调（DRAMsim3::writeComplete），由其在完成处理后释放
         }
         ~dramsim3_wrapper()
