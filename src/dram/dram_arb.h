@@ -6,7 +6,7 @@
  * @LastEditors: wayne 1448119477@qq.com
  * install git && error: git config user.email & please set dead value or
  * install git & please set dead value or install git
- * @LastEditTime: 2025-09-08 13:54:21
+ * @LastEditTime: 2025-09-10 21:46:28
  * @FilePath: /sim_v3/src/dram/dram_arb.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置
  * 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
@@ -109,13 +109,15 @@ namespace GNN
     // 发送响应事件
     EventFunctionWrapper sendResponseEvent;
     EventFunctionWrapper arbEvent;
-    std::deque<std::pair<PacketPtr, int>> responseQueue[num_banks];
+    //之前是所有upstream流向同一个fifo
+    // std::deque<std::pair<PacketPtr, int>> responseQueue[num_banks];
+       // 每个 bank、每个上游的响应队列
+   std::vector<std::vector<std::deque<PacketPtr>>> responseQueues;
     int buf_size;
-    bool retryReq[num_banks][num_up];  // 记录每个bank是否等待发送请求的重试
-    bool retryResp[num_banks][num_up]; // 记录每个bank是否等待发送响应的重试
+    bool response_retryReq[num_banks][num_up];  // 记录每个bank是否等待发送请求的重试
+    bool response_retryResp[num_banks][num_up]; // 记录每个bank是否等待发送响应的重试
 
-    bool down_arb_rd[num_banks];
-    bool down_arb_wr[num_banks];
+    bool request_retryReq[num_banks];
     int num_upstreams;
     // // 注意：不再使用轮询指针，改为基于FIFO数据量的仲裁策略
     // // 记录每个读请求的来源上游（与 outstandingReads 同步）

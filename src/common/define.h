@@ -44,6 +44,8 @@ typedef address_t address_buf_t[2];
 // cache
 #define NUM_CORES 9 // 8 + 1 axi
 
+#define DRAM_BURST 512
+#define WORD_BITS 16
 #define CACHE_LINE_SIZE 16 // word size
 #define CACHE_LINE_GRAN 4  //! TODO: set to 4
 

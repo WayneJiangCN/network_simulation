@@ -2,7 +2,7 @@
  * @Author: wayne 1448119477@qq.com
  * @Date: 2025-09-07 19:34:34
  * @LastEditors: wayne 1448119477@qq.com
- * @LastEditTime: 2025-09-09 13:19:01
+ * @LastEditTime: 2025-09-12 16:05:47
  * @FilePath: /sim_v3/src/dram/sim_dram_storage.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -40,11 +40,11 @@ private:
 public:
   SimDramStorage(uint64_t base = 0)
       : base_addr(base), capacity_bytes(kCapacityBytes) {
-    uint64_t total_entries = capacity_bytes / sizeof(uint32_t);
+    uint64_t total_entries = capacity_bytes / sizeof(uint16_t);
   storage.assign(static_cast<size_t>(total_entries), 0u);
     for (size_t i = 0; i < total_entries; i++)
     {
-      storage[i] = i*4;
+      storage[i] = i*2;
     }
     
   }

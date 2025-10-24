@@ -1,5 +1,6 @@
 /*
- * 计算模块：从 DmaBuffer 取已满缓冲，做简单处理后释放缓冲。
+ * 计算模块：作为主控制器，向DmaBuffer下发命令。
+ * 通过命令回调得知数据获取完成，然后开始处理。
  */
 
 #ifndef GNN_COMPUTE_MODULE_H_
@@ -7,61 +8,75 @@
 
 #include "common/object.h"
 #include "event/eventq.h"
-#include "dma/DmaBuffer.h"
+#include "common/port.h"
+#include "common/packet.h"
 #include <string>
 #include <vector>
+#include <set>
 
 namespace GNN {
 
 class ComputeModule : public SimObject {
 public:
-  ComputeModule(const std::string &name, DmaBuffer *dma, int active_banks,
-                int poll_interval = 1)
-      : SimObject(name), dma_(dma), active_banks_(active_banks),
-        poll_interval_(poll_interval),
-        tickEvent([this] { tick(); }, name + ".tickEvent") {
-    processed_chunks_per_bank_.assign(active_banks_, 0);
-  }
+    ComputeModule(const std::string &name, int active_banks);
 
-  void init() override {
-    if (!tickEvent.scheduled())
-      schedule(tickEvent, curTick() + poll_interval_);
-  }
+    void init() override;
+
+    // 设置 A 矩阵（1xN 向量）
+    void setA(const std::vector<int32_t> &a_vec);
+
+    // 读取最近一次计算的每列输出
+    const std::vector<long long> &getOutputs() const;
 
 private:
-  DmaBuffer *dma_;
-  int active_banks_;
-  int poll_interval_;
-  std::vector<long long> processed_chunks_per_bank_;
-  EventFunctionWrapper tickEvent;
+    int active_banks_;
+    std::vector<int32_t> A_;
+    int N_ = 0;
+    
+    std::vector<long long> processed_chunks_per_bank_;
+    std::vector<long long> output_per_bank_;
 
-  void tick() {
-    // 轮询各 bank，读取已满缓冲区
-    for (int bank = 0; bank < active_banks_; ++bank) {
-      int idx = dma_->getReadableBufferIndex(bank);
-      if (idx >= 0) {
-        const auto &data = dma_->getBankData(bank, idx);
-        // 简单“计算”：累加前若干元素（示例）
-        long long sum = 0;
-        for (size_t i = 0; i < data.size(); ++i) {
-          sum += data[i];
-        }
-        processed_chunks_per_bank_[bank] += 1;
-        D_INFO("COMPUTE", "Bank %d consumed buffer %d, words=%zu, sum=%lld, total=%lld",
-               bank, idx, data.size(), sum, processed_chunks_per_bank_[bank]);
+    // 请求状态管理
+    std::vector<bool> pending_request_;
+    std::vector<bool> in_flight_;
 
-        // 释放该缓冲区，DMA 可继续写入
-        dma_->releaseBankBuffer(bank, idx);
-      }
-    }
+    // 定时事件：驱动请求发送（带退避）
+    EventFunctionWrapper requestEvent;
+    void requestTick();
 
-    if (!tickEvent.scheduled())
-      schedule(tickEvent, curTick() + poll_interval_);
-  }
+   // 计算侧作为请求方，请求每个bank的数据
+   class CompRequestPort : public RequestPort {
+       ComputeModule &owner;
+       int bank_id;
+     public:
+       CompRequestPort(const std::string &name, ComputeModule &o, int id);
+       bool recvTimingResp(PacketPtr pkt) override;
+       void recvReqRetry() override;
+   };
+   std::vector<CompRequestPort> requestPorts;
+
+    bool recvTimingResp(PacketPtr pkt,uint64_t bank_id);
+
+    void scheduleRequestIfNeeded(uint32_t delay);
+
+   // 输出侧作为响应方，外部请求时返回计算结果
+   class CompResponsePort : public ResponsePort {
+       ComputeModule &owner;
+     public:
+       CompResponsePort(const std::string &name, ComputeModule &o)
+           : ResponsePort(name), owner(o) {}
+       bool recvTimingReq(PacketPtr pkt) override;
+       void recvRespRetry() override;
+   };
+   CompResponsePort responsePort;
+   PacketPtr pending_resp_ = nullptr;
+
+public:
+   Port &getPort(const std::string &if_name, int idx = -1) override;
 };
 
 } // namespace GNN
 
 #endif // GNN_COMPUTE_MODULE_H_
-
-
+ 
+ 

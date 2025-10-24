@@ -80,7 +80,7 @@ namespace GNN
 
   bool DRAMsim3::recvTimingReq(PacketPtr pkt)
   {
-    D_DEBUG("DRAM_SIM3", "recvTimingReq:");
+    // D_DEBUG("DRAM_SIM3", "recvTimingReq:");
     // keep track of the transaction
     bool can_accept = wrapper->can_accept(pkt->getAddr(), pkt->isWrite());
     if (!pkt->isWrite())

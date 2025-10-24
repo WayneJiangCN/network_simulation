@@ -76,7 +76,7 @@ namespace GNN
         void global_read_callback(uint64_t addr)
         {
             // 创建读包，wrapper 负责释放
-            PacketPtr pkt = PacketManager::create_read_packet(addr,16);
+            PacketPtr pkt = PacketManager::create_read_packet(addr,DRAM_BURST/WORD_BITS);
            
             int ch = this->get_channel(addr);
             if (read_callbacks[ch]) {

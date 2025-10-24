@@ -13,6 +13,8 @@ private:
     size_t size;                      // 数据大小
     std::vector<uint32_t> data;        // 数据内容
     bool is_write;                     // 是否为写操作
+    int bank_id = -1;                  // 关联的bank编号（可选元信息）
+    int buffer_idx = -1;               // 关联的缓冲索引（可选元信息）
 
 public:
     // 构造函数
@@ -46,6 +48,12 @@ public:
     void setWrite(addr_t _is_write) { is_write = _is_write; }
     // 设置大小
     void setSize(size_t s) { size = s; }
+
+    // 元信息：bank 与 buffer 索引
+    void setBankId(int v) { bank_id = v; }
+    int getBankId() const { return bank_id; }
+    void setBufferIdx(int v) { buffer_idx = v; }
+    int getBufferIdx() const { return buffer_idx; }
 };
 
 // 简单的指针类型
