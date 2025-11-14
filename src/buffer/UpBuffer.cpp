@@ -13,7 +13,7 @@ namespace GNN
                         { send_data_2cal(); },
                         name + ".send_data_respEvent")
   {
-    buf_size = 3;
+    buf_size = 3;  //
     // 初始化端口、FIFO
     requestPorts.reserve(num_ports);
     req_fifos_.reserve(num_ports);
