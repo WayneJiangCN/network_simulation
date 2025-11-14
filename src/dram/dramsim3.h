@@ -14,7 +14,7 @@
 #include "event/eventq.h"
 #include "probe/named.h"
 #include "probe/probe.h"
-
+#include "common/define.h"
 namespace GNN
 {
   // DRAMsim3 内存控制器类
@@ -32,7 +32,10 @@ namespace GNN
 
   private:
     // 模拟DRAM存储：独立类，提供4GB、burst=64支持
-    SimDramStorage sim_storage;
+    // #ifdef DATA_STORE
+    //   SimDramStorage sim_storage;
+    // #else
+    // #endif
     int channel_id;
     // 内存端口，负责流控，避免端口自身隐式创建无限存储
     class MemoryPort : public ResponsePort

@@ -6,7 +6,8 @@
 #include <vector>
 #include <functional>
 #include <unordered_map>
-#include "define.h"
+
+#include "common/define.h"
 #include "memory_system.h"
 #include "common/object.h"
 #include "common/debug.h"
@@ -76,7 +77,7 @@ namespace GNN
         void global_read_callback(uint64_t addr)
         {
             // 创建读包，wrapper 负责释放
-            PacketPtr pkt = PacketManager::create_read_packet(addr,DRAM_BURST/WORD_BITS);
+            PacketPtr pkt = PacketManager::create_read_packet(addr,BURST_BITS/WORD_SIZE);
            
             int ch = this->get_channel(addr);
             if (read_callbacks[ch]) {

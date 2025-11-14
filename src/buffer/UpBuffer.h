@@ -18,6 +18,7 @@
 #include "dram/dram_arb.h"
 #include "dram/dramsim3_wrapper.h"
 #include "event/eventq.h"
+#include "common/define.h"
 #include <deque>
 #include <string>
 #include <vector>

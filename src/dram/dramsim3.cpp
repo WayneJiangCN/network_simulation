@@ -28,7 +28,7 @@ namespace GNN
   {
     if (!port.isConnected())
     {
-      D_ERROR("DRAM", "DRAMsim3 %s is unconnected!\n", name());
+      D_ERROR("DRAM", "DRAMsim3 %s is unconnected!\n", name().c_str());
     }
     // startup();
   }
@@ -95,7 +95,11 @@ namespace GNN
     {
       if (can_accept)
       {
-        sim_storage.writePacket(pkt);
+      //   #if DATA_STORE ==1
+      //   sim_storage.writePacket(pkt);
+      // #else
+      // #endif
+ 
         outstandingWrites[pkt->getAddr()].push(pkt);
         ++nbrOutstandingWrites;
         pendingDelete.reset(pkt);
@@ -148,7 +152,7 @@ namespace GNN
 
     p->second.pop();
     if (p->second.empty())
-      outstandingReads.erase(p);
+      outstandingReads.erase(p);//会删除map中的条目，释放相关内存 这个条目对应的内存
 
     // no need to check for drain here as the next call will add a
     // response to the response queue straight away
@@ -156,7 +160,10 @@ namespace GNN
     --nbrOutstandingReads;
     if (retryReq)
       schedule(tickEvent, curTick() + 1);
-    sim_storage.readPacket(pkt);
+    // #ifdef DATA_STORE
+    //   sim_storage.readPacket(pkt);
+    // #else
+    //   #endif
     // perform the actual memory access
     accessAndRespond(pkt);
   }

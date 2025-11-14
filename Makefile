@@ -1,6 +1,6 @@
 #CXX = g++ 
-#-g
-CXX = g++ -gdwarf-2 -gstrict-dwarf -fvar-tracking-assignments  
+#--g -fsanitize=address
+CXX = g++  -static-libasan -gdwarf-2 -gstrict-dwarf -fvar-tracking-assignments
 TARGET = GNN
 
 SRC_DIR = ./src \

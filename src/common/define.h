@@ -1,3 +1,11 @@
+/*
+ * @Author: wayne 1448119477@qq.com
+ * @Date: 2025-11-12 12:58:08
+ * @LastEditors: wayne 1448119477@qq.com
+ * @LastEditTime: 2025-11-12 13:24:49
+ * @FilePath: /simulator_simple/src/common/define.h
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
 #ifndef DEFINE_H
 #define DEFINE_H
 
@@ -5,177 +13,67 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
-
+namespace GNN {
 //#define DEBUG
 #define ANALYSIS
 #define DRAM_MODE
-#define FIX_MODE_DLY 32
+//data store
+#define DATA_STORE  1
+#define INST_ADDR_STRIDE 512 //每个指令的地址步长
+#define CHANNEL_ADDR_DIF 64
 
-// #define DRAM_TRACE
+#define WORD_SIZE 16 //每个Burst的单词大小
+#define BURST_BITS 512 //每个Burst的位数
+#define BITMAP_LINE_SIZE 16 //每个行的大小
+#define BURST_NUM BURST_BITS/WORD_SIZE //每个指令的Burst数量
+#define BITMAP_SLICE_ROW_NUM_CFG 512 //每个切片的行数
+#define BITMAP_SLICE_COL_NUM_CFG 1 //每个切片的列数
+#define SPARSITY 0.5 //稀疏度
+#define TOTAL_SLICE_NUM_CFG 3
+#define TOTAL_INST_NUM_CFG 3
+#define CHANNEL_NUM 8
+
+#define BITMAP_SIZE  BITMAP_SLICE_ROW_NUM_CFG * WORD_SIZE / BURST_BITS
+#define WT_SIZE   BITMAP_SLICE_ROW_NUM_CFG * WORD_SIZE * WORD_SIZE/ BURST_BITS  *SPARSITY
+#define FW_SIZE BITMAP_SLICE_ROW_NUM_CFG * WORD_SIZE/ BURST_BITS* 2
+
+#define FEATURE_NUM_PER_ROW BITMAP_SLICE_ROW_NUM_CFG/BURST_NUM*WORD_SIZE/BURST_BITS //每个行对应的特征数量
+
+
+//File CFG
+#define FILE_TOTAL_ROW_CFG 4096
+#define FILE_TOTAL_COL_CFG 4096
+#define FILE_SLICE_ROW_CFG BITMAP_SLICE_ROW_NUM_CFG
+#define FILE_SLICE_COL_CFG BITMAP_LINE_SIZE 
+
+
 // types
 typedef uint64_t cycles_t;
 typedef uint32_t address_t;
 typedef uint32_t reg_t;
+typedef uint16_t storage_t;
+typedef uint32_t addr_t;
 
-// buf types
-typedef int int_buf_t[2];
-typedef float float_buf_t[2];
-typedef bool bool_buf_t[2];
+extern uint64_t dram_burst_num;
+struct SimulatorConfig {
+    // Transformer配置
 
-typedef std::vector<int> vec_int_buf_t[2];
-typedef std::vector<float> vec_float_buf_t[2];
-
-typedef int *int_array_buf_t[2];
-
-typedef uint64_t cycles_buf_t[2];
-typedef address_t address_buf_t[2];
-
-#define CHANNEL_NUM 8
-
-
-// #define ADD_ROW_BASE 0x0
-// #define ADD_COL_BASE 0x10000
-// #define FEATURE_ROW_BASE 0x500000
-// #define FEATURE_COL_BASE 0x600000
-// #define ADD_FEATURE_BASE 0x50000
-
-#define BANK_SIZE 128 // SRAM Depth
-
-// cache
-#define NUM_CORES 9 // 8 + 1 axi
-
-#define DRAM_BURST 512
-#define WORD_BITS 16
-#define CACHE_LINE_SIZE 16 // word size
-#define CACHE_LINE_GRAN 4  //! TODO: set to 4
-
-#define CACHE_WAY_NUM 32
-#define CACHE_LINE_NUM 1024 
-#define CACHE_OFFSET 4
-#define MSHR_SIZE 32//64 
-#define MSHR_ENTRY_SIZE 8//64//32
-#define UP_BUF_SIZE 16//32 
-#define MAC_NUM 32
-#define TOTAL_ROUND 352 //cora:46 86 2  pubmed:80 3090 10 Flickr:352 61380 44
-#define TOTAL_ROW_ROUND 44//cora:2 2 pubmed:10 10 Flickr: 44  44
-#define TOTAL_SLICE_NUM 8  //cora:23 43 1 pubmed:8 309 1 Flickr: 8 1395 1
-#define ROW_NUM 1314520//cora: 2708 pubmed:19717 Flickr:89250
-#define COL_NUM 131072//定值
-// #define CACHE_WAY_NUM 4
-// #define CACHE_LINE_NUM 32
-// #define CACHE_OFFSET 4
-// #define MSHR_SIZE 64
-// #define MSHR_ENTRY_SIZE 32
-
-enum NET_TYPE {
-    GCN,
-    GIN,
-    GRPHASAGE,
-    GAT
+    
+    // 稀疏计算配置
+    size_t num_pes = 8;                    // PE数量
+    size_t ring_buffer_capacity = 64;      // Ring Buffer容量
+    size_t hash_cam_size = 64;             // Hash CAM大小
+    size_t vector_size = 512;              // 向量大小
+    
+    // 仿真配置
+    uint64_t max_simulation_cycles = 1000000; // 最大仿真周期
+    bool enable_statistics = true;         // 启用统计
+    bool enable_debug = false;              // 启用调试
+    
+    // 数据配置
+    std::string weight_file;                // 权重文件路径
+    std::string feature_file;              // 特征文件路径
+    std::string bitmap_file;               // 位图文件路径
 };
-
-enum request_type {
-    READ,
-    FILL,
-    FILL_IN // filled signal back to cache
-};
-
-struct request_pack {
-    int core_id;   // which core
-    int thread_id; // which thread of the core
-    address_t address;
-    request_type core_req;
-
-    int sel_way;               // tag
-    address_t cache_line_addr; // tag
-    int tag;
-
-    int l2_rd[CACHE_LINE_SIZE * CACHE_LINE_GRAN]; // read
-
-    int l2_wr[CACHE_LINE_SIZE * CACHE_LINE_GRAN]; // miss fill
-    int fill_degree;
-    bool fill_ok;
-
-    int corr[2]; // for test
-    int col;     // for test
-    // TODO:mask,data
-};
-
-struct cache2core_pack {
-    int l2rd[CACHE_LINE_SIZE * CACHE_LINE_GRAN];
-    int core_id=0;   // which core
-    int thread_id; // which thread of the core
-    address_t address;
-    int corr[2]; // for test
-    int col;     // for test
-};
-struct core_pack {
-    // int l2rd[CACHE_LINE_SIZE];
-    int core_id;   // which core
-    int thread_id; // which thread of the core
-    int y;         // y coor
-    int col;       // for test
-    int vertex_num;
-    int adj_value; //! not comp
-    int data[CACHE_LINE_SIZE * CACHE_LINE_GRAN];
-    address_t address;
-};
-
-// acc engine
-#define ACC_PSTAGE 3// > 1 , = 1 has bug
-#define PE_NUM 16
-#define THREAD_NUM 32
-struct agg_compute {
-    int acc_reg[PE_NUM];
-    bool vld2buf;
-    int thread_id;
-    unsigned int thread_cnt;
-};
-struct agg2buf {
-    int acc_reg[CACHE_LINE_SIZE * CACHE_LINE_GRAN]; //! TODO PE_NUM->CACHE_LINE_NUM
-    int thread_id;
-};
-
-// comb engine
-#define ADJ_R_CHANNEL 0
-#define DEGREE_R_CHANNEL 1
-#define WEIGHT_R_CHANNEL 2
-#define IN_R_CHANNEL 3
-#define OUT_R_CHANNEL 4
-#define CACHE_ARB_CH 5
-
-#define OUT_W_CHANNEL 6
-#define FEATURE_W_CHANEL 7
-
-#define NUM_SYS 8
-#define SYS_W_SIZE_MAX 16     // per sys W -> H_f max
-#define SYS_BUF_SIZE_MAX 128 // W_w max
-struct comb_out {
-    int feature_out[CACHE_LINE_SIZE]; // equal to dram gran, the smallest gran for feature length
-    address_t addr;
-    bool wr_vld;
-    bool wr_receive;
-    bool rd_vld;
-    bool data_vld;
-    unsigned int thread_id; // for test
-};
-struct comb_CA_buf {
-    // feature_data
-    address_t addr;
-    unsigned int core_id;
-    unsigned int col; // this is the coor[1]
-    bool rd_vld;
-    bool data_vld;
-    unsigned int data_cnt;
-    bool is_reading = false;
-};
-struct comb2agg {
-    // CA
-    address_t addr;
-    unsigned int core_id;
-    unsigned int col;                                   // this is the coor[1]
-    int feature_out[CACHE_LINE_SIZE * CACHE_LINE_GRAN]; // equal to dram gran, the smallest gran for feature length
-    bool is_send2cache = false;
-};
-
+}
 #endif

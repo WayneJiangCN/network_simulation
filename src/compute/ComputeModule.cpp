@@ -156,11 +156,11 @@ namespace GNN
     bool ComputeModule::CompResponsePort::recvTimingReq(PacketPtr pkt)
     {
         // Build a response containing current outputs per bank (low 32 bits)
-        std::vector<uint32_t> data;
+        std::vector<storage_t> data;
         data.reserve(owner.output_per_bank_.size());
         for (auto v : owner.output_per_bank_)
         {
-            data.push_back(static_cast<uint32_t>(v & 0xFFFFFFFFu));
+            data.push_back(static_cast<storage_t>(v & 0xFFFFu));
         }
 
         PacketPtr resp = PacketManager::create_write_packet(0, data);

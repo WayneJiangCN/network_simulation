@@ -1,155 +1,120 @@
-#include "buffer/UpBuffer.h"
-#include "common/common.h"
 #include "common/debug.h"
 #include "common/object.h"
 #include "compute/ComputeModule.h"
-#include "dma/DmaBuffer.h"
-#include "dram/dram.h"
+#include "dram/dramsim3.h"
 #include "dram/dram_arb.h"
+#include "dram/dramsim3_wrapper.h"
+#include "dram/sim_dram_storage.h"
 #include "event/eventq.h"
-#include "probe/Listenervoid.h"
-#include "probe/probe.h"
-#include <cmath>
+#include "spare/BitmapBank.h"
+#include "spare/WeightBank.h"
+#include "spare/FeatureBank.h"
+#include "spare/DecoderModule.h"
 #include <cstdint>
-#include <functional>
 #include <iostream>
-#include <vector>
+#include <map>
+
 using namespace GNN;
 
-class PrintEvent : public Event {
-public:
-  PrintEvent(const std::string &msg, int id,
-             EventBase::Priority prio = EventBase::Default_Pri)
-      : Event(prio), message(msg), eventId(id) {}
+// 双向端口绑定辅助函数
+static inline void bindPorts(Port &a, Port &b)
+{
+  a.bind(b);
+  b.bind(a);
+}
 
-  void process() override {
-    std::cout << "[Tick " << when() << "] "
-              << "Event #" << eventId << " (prio=" << priority()
-              << "): " << message << std::endl;
-  }
-
-private:
-  std::string message;
-  int eventId;
-};
-
-void forEachObject(void (SimObject::*mem_func)()) {
-  for (auto *obj : SimObject::simObjectList) {
+// 遍历所有对象执行成员函数
+static void forEachObject(void (SimObject::*mem_func)())
+{
+  for (auto *obj : SimObject::simObjectList)
+  {
     (obj->*mem_func)();
   }
 }
-
-int main() {
-
-    // 矩阵分块：从上到下，再从左到右
-    const int weight_row_num = 4096;   // 行数
-    const int weight_col_num = 8;      // 列数
-    const int block_row = 8;         // 每块的行数
-    const int block_col = 2;           // 每块的列数
-
-    const int num_blocks_row = (weight_row_num + block_row - 1) / block_row; // 向上取整
-    const int num_blocks_col = (weight_col_num + block_col - 1) / block_col;
-
-    // 记录每个块的起始和结束坐标（行优先，从上到下，再从左到右）
-    struct Block {
-        int row_start, row_end;
-        int col_start, col_end;
-    };
-    std::vector<Block> blocks;
-    for (int col = 0; col < weight_col_num; col += block_col) {
-        for (int row = 0; row < weight_row_num; row += block_row) {
-            Block blk;
-            blk.row_start = row;
-            blk.row_end = std::min(row + block_row, weight_row_num);
-            blk.col_start = col;
-            blk.col_end = std::min(col + block_col, weight_col_num);
-            blocks.push_back(blk);
-        }
-    }
-    // 其他配置
-    const int all_weight_length = weight_row_num * weight_col_num; // 总长度
-    const int token_length = 128;
-    const int num_banks = 8;      // Bank 数
-    const int dram_buf_size = 64; // DramArb 内部缓冲深度
-    const int num_upstreams = 4;  // 上游数量：3个UpBuffer + 1个DMA
-    const int weight_length = weight_row_num;
-
-  // DRAMsim3 配置
-  const std::string config_file = "./DRAMsim3-master/configs/HBM2_4Gb_x128.ini";
-  const std::string output_dir = ".";
-  const std::string trace_out_file = "./output/trace_out_file.txt";
-
-  // 全局事件队列与调试开关
+namespace GNN { uint64_t storage_addr_max = 0; uint64_t storage_number = 0; uint64_t dram_burst_num=0;}
+int main()
+{
+  // 配置常量
+  constexpr int num_banks = 8;
+  constexpr int dram_buf_size = 256*8;
+  constexpr int num_upstreams = 3;
+  constexpr uint64_t max_cycles = 1000000;
+  constexpr int bitmap_size = BITMAP_SIZE;
+  constexpr int wt_bank_size = WT_SIZE;
+  constexpr int fw_bank_size =FW_SIZE;
+  // 文件路径
+  constexpr const char *config_file = "./DRAMsim3-master/configs/HBM2_4Gb_x128.ini";
+  constexpr const char *output_dir = ".";
+  constexpr const char *trace_out_file = "./output/trace_out_file.txt";
+  constexpr const char *data_prefix = "./data/_layer0_weight_bitmap_";
+  constexpr const char *layer0_path = "./data/wanda/self_code/llama_weight_bitmap_txt/layer_0";
+  int num =BITMAP_SLICE_ROW_NUM_CFG * BURST_BITS / WORD_SIZE * SPARSITY  ;
+  // 初始化仿真系统
   gSim = new EventQueue("main_queue");
-  miniDebugLevel = GNN::DBG_INFO; // 只显示 info 及以上
-  // miniDebugModules = {"DRAM", "BUFFER", "DRAM_ARB", "DRAM_SIM3",
-  // "DRAM_WRAPPER", "EVENTQ","DMA"};
-  miniDebugModules = {"", "", "COMPUTE","Compute","main"};
+   miniDebugLevel = GNN::DBG_INFO;//SIM_DRAM_STORAGE FILE_READ
+  // miniDebugModules = {"SPARSE", "DECODER", "", "",
+  //                     "WeightBank", "FeatureBank", "BitmapBank", "DmaBuffer","DMA","DRAM_ARB"};
+  miniDebugModules = {"CAM","","","BUG",""};
 
+  // 创建存储和数据接口
+  SimDramStorage *sim_storages = new SimDramStorage(0, data_prefix, ".txt");
+  
+  // 读取layer_0文件夹下所有子文件夹的数据
+  uint64_t layer0_burst_num = sim_storages->readLayer0AllFoldersData(layer0_path);
+  
+  // 也可以继续使用原来的方法读取单个文件（如果需要）
+  // sim_storages->readDataFile();
+
+  // 创建DRAM控制器和仲裁器
   auto *wrapper = new dramsim3_wrapper(config_file, output_dir, trace_out_file);
   DramArb dramArb("dram_arb", dram_buf_size, num_upstreams);
 
-  // 上游缓冲（人为分配不同起始地址，便于观察）
-  UpBuffer up0("up_buffer_0", wrapper, 0);
-  UpBuffer up1("up_buffer_1", wrapper, 16 * 1024);
-  UpBuffer up2("up_buffer_2", wrapper, 32 * 1024);
-  DmaBuffer dma("dma0", 0, block_row, 8); // 每行32个32-bit word，8个bank
-  ComputeModule compute("compute0", num_banks);
-  // UpBuffer up3("up_buffer_3", wrapper, 48 * 1024);
+  // 创建Bank模块
+  BitmapBank bitmap_bank("bmap_", 0, bitmap_size, num_banks, layer0_burst_num/bitmap_size/8);
+  WeightBank weight_bank("w_", 0x1000000, wt_bank_size, num_banks);
+  FeatureBank feature_bank("f_", 0x15000000, fw_bank_size, num_banks);
 
-  // 下游每个 bank 一个 DRAMsim3 实例
+  // 创建解码和计算模块
+  DecoderModule decoder("decoder_", num_banks, sim_storages);
+  ComputeModule compute("compute0", num_banks);
+
+  // 创建DRAM实例
   std::vector<DRAMsim3 *> drams;
   drams.reserve(num_banks);
-  for (int bank = 0; bank < num_banks; ++bank) {
-    drams.push_back(
-        new DRAMsim3("dramsim3_" + std::to_string(bank), bank, wrapper));
+  for (int bank = 0; bank < num_banks; ++bank)
+  {
+    drams.push_back(new DRAMsim3("dramsim3_" + std::to_string(bank), bank, wrapper));
   }
 
-  // 小工具：双向绑定
-  auto bindTwoWay = [](Port &a, Port &b) {
-    a.bind(b);
-    b.bind(a);
-  };
-
-  // 端口绑定：每个 bank 绑定四个上游端口 + 一个下游 DRAM 端口
-  for (int bank = 0; bank < num_banks; ++bank) {
+  // 连接所有端口
+  for (int bank = 0; bank < num_banks; ++bank)
+  {
     const std::string b = std::to_string(bank);
-    bindTwoWay(up0.getPort("buf_side" + b),
-               dramArb.getPort("response" + b + "_0"));
-    bindTwoWay(up1.getPort("buf_side" + b),
-               dramArb.getPort("response" + b + "_1"));
-    bindTwoWay(up2.getPort("buf_side" + b),
-               dramArb.getPort("response" + b + "_2"));
-    bindTwoWay(dma.getPort("dma_side" + b),
-               dramArb.getPort("response" + b + "_3"));
-    // 计算侧端口绑定：ComputeModule(请求端) ↔ DmaBuffer(响应端)
-    bindTwoWay(compute.getPort("comp_side" + b),
-               dma.getPort("comp_side" + b));
-    // bindTwoWay(up3.getPort("buf_side" + b), dramArb.getPort("response" + b +
-    // "_3"));
-    bindTwoWay(dramArb.getPort("request" + b),
-               drams[bank]->getPort("mem_side"));
+
+    // Bank到DMA仲裁器
+    bindPorts(bitmap_bank.getPort("bmap_dma_side" + b, bank), dramArb.getPort("response" + b + "_0"));
+    bindPorts(weight_bank.getPort("w_dma_side" + b, bank), dramArb.getPort("response" + b + "_1"));
+    bindPorts(feature_bank.getPort("f_dma_side" + b, bank), dramArb.getPort("response" + b + "_2"));
+
+    // Decoder到Bank
+    bindPorts(decoder.getPort("decoder_bmap_side" + b, bank), bitmap_bank.getPort("bmap_comp_side" + b, bank));
+    bindPorts(decoder.getPort("decoder_w_side" + b, bank), weight_bank.getPort("w_comp_side" + b, bank));
+    bindPorts(decoder.getPort("decoder_f_side" + b, bank), feature_bank.getPort("f_comp_side" + b, bank));
+
+    // Compute到Decoder
+    bindPorts(compute.getPort("comp_side" + b), decoder.getPort("decoder_compute_side" + b, bank));
+
+    // DMA仲裁器到DRAM
+    bindPorts(dramArb.getPort("request" + b), drams[bank]->getPort("mem_side"));
   }
 
-  // 调用所有对象的 init 钩子，触发各自初始化逻辑
+  // 初始化所有对象
   forEachObject(&SimObject::init);
 
-  // 发起多个 DMA 命令，每个 block_row 就是一条指令
-  DmaBuffer::DmaCommand cmd;
-
-  // 为每个块发送一条DMA指令
-  for (size_t i = 0; i <blocks.size() ; i++)
+  // 运行仿真
+  std::cout << "\n---- Simulation Start ----" << std::endl;
+  while (!gSim->empty() && gSim->getCurTick() < max_cycles)
   {
-    cmd.base_addr = 512 * i * block_row;  // 每个块的起始地址
-    cmd.total_lines = block_row;        // 每个块的行数就是一条指令
-    cmd.cmd_id = i + 1;                 // 每个命令有唯一ID
-    cmd.completion_callback = [](uint64_t id){ D_INFO("main", "Command %lu completed fetch.", id); };
-    dma.enqueueCommand(cmd);
-  }
-
-  // 主循环：按事件推进
-  std::cout << "---- Simulation Start ----" << std::endl;
-  while (!gSim->empty() && gSim->getCurTick() < 1000000) {
     gSim->serviceOne();
   }
   std::cout << "---- Simulation End ----" << std::endl;

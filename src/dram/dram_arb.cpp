@@ -195,7 +195,7 @@ namespace GNN
     // 参数验证
     assert(bank_id >= 0 && bank_id < num_banks);
     assert(upstream_id >= 0 && upstream_id < num_upstreams);
-
+    D_DEBUG("DRAM_ARB","requst read data id :%d", upstream_id);
     // 检查是否可以接受新请求
     bool can_accept_read =
         nbrOutstandingReads[bank_id] + responseQueues[bank_id][0].size() < buf_size;

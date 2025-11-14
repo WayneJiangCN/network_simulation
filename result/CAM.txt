@@ -1,0 +1,1 @@
+bank_id,cam_idx,hits,inserts,evictions,still_in_cam

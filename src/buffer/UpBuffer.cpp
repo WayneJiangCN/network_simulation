@@ -52,7 +52,7 @@ namespace GNN
         {
           for (size_t j = 0; j < 0; j++)
           {
-            std::vector<uint32_t> temp_data;
+            std::vector<storage_t> temp_data;
             temp_data.reserve(16);
             for (size_t k = 0; k < 16; k++)
             {
@@ -67,7 +67,7 @@ namespace GNN
         }
         else
         {
-          std::vector<uint32_t> temp_data;
+          std::vector<storage_t> temp_data;
           temp_data.reserve(16);
           for (size_t k = 0; k < 16; k++)
           {
@@ -185,7 +185,7 @@ namespace GNN
       return false;
     }
     resp_fifos_[port_id].push(pkt);
-    std::vector<uint32_t> temp_data;
+    std::vector<storage_t> temp_data;
     temp_data = pkt->getData();
 
     D_INFO("BUFFER", "[UpBuffer] enqueue resp addr:%d on port:%d", pkt->getAddr(),
